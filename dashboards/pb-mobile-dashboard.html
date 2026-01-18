@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PB Pipeline">
-<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>â¡</text></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 <title>PB Mobile | Photon Brothers</title>
 <style>
 :root {
@@ -316,22 +316,22 @@ body {
     <div class="section-title">Quick Actions</div>
     <div class="quick-actions">
       <a href="#" class="action-btn" onclick="switchView('rtb')">
-        <div class="action-icon">ð¨</div>
+        <div class="action-icon">🔨</div>
         <div class="action-label">Ready to Build</div>
         <div class="action-count" id="action-rtb">--</div>
       </a>
       <a href="#" class="action-btn" onclick="switchView('overdue')">
-        <div class="action-icon">â ï¸</div>
+        <div class="action-icon">⚠️</div>
         <div class="action-label">Overdue</div>
         <div class="action-count" id="action-overdue" style="color: var(--danger)">--</div>
       </a>
       <a href="#" class="action-btn" onclick="switchView('pe')">
-        <div class="action-icon">ð±</div>
+        <div class="action-icon">🌱</div>
         <div class="action-label">PE Projects</div>
         <div class="action-count" id="action-pe" style="color: var(--pe)">--</div>
       </a>
       <a href="#" class="action-btn" onclick="switchView('inspection')">
-        <div class="action-icon">ð</div>
+        <div class="action-icon">🔍</div>
         <div class="action-label">Inspection</div>
         <div class="action-count" id="action-insp">--</div>
       </a>
@@ -353,7 +353,7 @@ body {
   <div class="section">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
       <div class="section-title" style="margin: 0;">Ready to Build</div>
-      <button onclick="switchView('home')" style="background: var(--surface); border: none; color: var(--text); padding: 0.5rem;">â Back</button>
+      <button onclick="switchView('home')" style="background: var(--surface); border: none; color: var(--text); padding: 0.5rem;">← Back</button>
     </div>
     <div id="rtb-list"></div>
   </div>
@@ -363,7 +363,7 @@ body {
   <div class="section">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
       <div class="section-title" style="margin: 0;">Overdue Projects</div>
-      <button onclick="switchView('home')" style="background: var(--surface); border: none; color: var(--text); padding: 0.5rem;">â Back</button>
+      <button onclick="switchView('home')" style="background: var(--surface); border: none; color: var(--text); padding: 0.5rem;">← Back</button>
     </div>
     <div id="overdue-list"></div>
   </div>
@@ -373,7 +373,7 @@ body {
   <div class="section">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
       <div class="section-title" style="margin: 0;">Participate Energy</div>
-      <button onclick="switchView('home')" style="background: var(--surface); border: none; color: var(--text); padding: 0.5rem;">â Back</button>
+      <button onclick="switchView('home')" style="background: var(--surface); border: none; color: var(--text); padding: 0.5rem;">← Back</button>
     </div>
     <div id="pe-list"></div>
   </div>
@@ -383,7 +383,7 @@ body {
   <div class="section">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
       <div class="section-title" style="margin: 0;">Inspection Stage</div>
-      <button onclick="switchView('home')" style="background: var(--surface); border: none; color: var(--text); padding: 0.5rem;">â Back</button>
+      <button onclick="switchView('home')" style="background: var(--surface); border: none; color: var(--text); padding: 0.5rem;">← Back</button>
     </div>
     <div id="inspection-list"></div>
   </div>
@@ -391,19 +391,19 @@ body {
 
 <div class="bottom-nav">
   <a href="#" class="nav-item active" onclick="switchView('home')">
-    <span class="nav-icon">ð </span>
+    <span class="nav-icon">🏠</span>
     Home
   </a>
   <a href="pb-dashboard-hub.html" class="nav-item">
-    <span class="nav-icon">ð</span>
+    <span class="nav-icon">📊</span>
     Dashboards
   </a>
   <a href="comprehensive-schedule.xlsx" class="nav-item">
-    <span class="nav-icon">ð</span>
+    <span class="nav-icon">📅</span>
     Schedule
   </a>
   <a href="weekly-operations-report.xlsx" class="nav-item">
-    <span class="nav-icon">ð</span>
+    <span class="nav-icon">📋</span>
     Reports
   </a>
 </div>
@@ -450,7 +450,7 @@ document.getElementById('action-insp').textContent = data.inspection;
 if (data.overdue > 300) {
   document.getElementById('alerts-container').innerHTML = `
     <div class="alerts-banner">
-      <span class="alerts-icon">ð¨</span>
+      <span class="alerts-icon">🚨</span>
       <span class="alerts-text">${data.overdue} projects overdue - ${data.rtbBlocked} RTB blocked</span>
     </div>
   `;
