@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "regions": ["sfo1"],
+  "functions": {
+    "src/app/api/**/*.ts": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/dashboards/:path*",
+      "destination": "/dashboards/:path*"
+    }
+  ]
+}
