@@ -145,9 +145,9 @@ export interface Project {
   forecastedPtoDate: string | null;
 
   // Calculated fields
-  daysToInstall: number;
-  daysToInspection: number;
-  daysToPto: number;
+  daysToInstall: number | null;
+  daysToInspection: number | null;
+  daysToPto: number | null;
   daysSinceClose: number;
   daysSinceStageMovement: number;
 
@@ -348,13 +348,38 @@ function transformDealToProject(deal: Record<string, unknown>, portalId: string)
   const daysSinceClose = closeDate ? daysBetween(closeDate, now) : 0;
 
   // Calculate days to milestones
-  const forecastInstall = parseDate(deal.forecasted_installation_date) || parseDate(deal.install_schedule_date);
-  const forecastInspection = parseDate(deal.forecasted_inspection_date) || parseDate(deal.inspections_schedule_date);
-  const forecastPto = parseDate(deal.forecasted_pto_date);
+  // Use explicit forecast dates from HubSpot if available
+  const explicitForecastInstall = parseDate(deal.forecasted_installation_date) || parseDate(deal.install_schedule_date);
+  const explicitForecastInspection = parseDate(deal.forecasted_inspection_date) || parseDate(deal.inspections_schedule_date);
+  const explicitForecastPto = parseDate(deal.forecasted_pto_date);
 
-  const daysToInstall = forecastInstall ? daysBetween(now, new Date(forecastInstall)) : 0;
-  const daysToInspection = forecastInspection ? daysBetween(now, new Date(forecastInspection)) : 0;
-  const daysToPto = forecastPto ? daysBetween(now, new Date(forecastPto)) : 0;
+  // Calculate default forecasts from close date if no explicit dates
+  // Default timeline: Install at close + 90 days, Inspection at close + 120 days, PTO at close + 150 days
+  let forecastInstall = explicitForecastInstall;
+  let forecastInspection = explicitForecastInspection;
+  let forecastPto = explicitForecastPto;
+
+  if (closeDate) {
+    if (!forecastInstall) {
+      const defaultInstall = new Date(closeDate);
+      defaultInstall.setDate(defaultInstall.getDate() + 90);
+      forecastInstall = defaultInstall.toISOString().split('T')[0];
+    }
+    if (!forecastInspection) {
+      const defaultInspection = new Date(closeDate);
+      defaultInspection.setDate(defaultInspection.getDate() + 120);
+      forecastInspection = defaultInspection.toISOString().split('T')[0];
+    }
+    if (!forecastPto) {
+      const defaultPto = new Date(closeDate);
+      defaultPto.setDate(defaultPto.getDate() + 150);
+      forecastPto = defaultPto.toISOString().split('T')[0];
+    }
+  }
+
+  const daysToInstall = forecastInstall ? daysBetween(now, new Date(forecastInstall)) : null;
+  const daysToInspection = forecastInspection ? daysBetween(now, new Date(forecastInspection)) : null;
+  const daysToPto = forecastPto ? daysBetween(now, new Date(forecastPto)) : null;
 
   const priorityScore = calculatePriorityScore(stageName, daysSinceClose, isPE, isRTB, isBlocked);
 
@@ -664,9 +689,9 @@ export function filterProjectsForContext(
           p.isActive &&
           (p.isBlocked ||
             p.daysSinceStageMovement > 30 ||
-            (p.daysToInstall < 0 && !p.constructionCompleteDate) ||
-            (p.daysToInspection < 0 && !p.inspectionPassDate) ||
-            (p.daysToPto < 0 && !p.ptoGrantedDate))
+            (p.daysToInstall !== null && p.daysToInstall < 0 && !p.constructionCompleteDate) ||
+            (p.daysToInspection !== null && p.daysToInspection < 0 && !p.inspectionPassDate) ||
+            (p.daysToPto !== null && p.daysToPto < 0 && !p.ptoGrantedDate))
       );
 
     default:

@@ -385,7 +385,7 @@ tr:focus {
           <th>Project</th>
           <th>Location</th>
           <th>Stage</th>
-          <th>Days to Install</th>
+          <th>Install Timeline</th>
           <th>Value</th>
           <th>Score</th>
           <th>Rec. Date</th>
@@ -814,6 +814,30 @@ bottlenecksEl.innerHTML = data.bottlenecks.map(b => `
   </div>
 `).join('');
 
+// Helper: Format days display
+function formatDaysToInstall(days) {
+  if (days === null || days === undefined) return 'N/A';
+  if (days === 0) return 'due today';
+  if (days < 0) return `${Math.abs(days)}d overdue`;
+  return `in ${days}d`;
+}
+
+// Helper: Get next business day (skips weekends)
+function getNextBusinessDay(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  if (day === 0) d.setDate(d.getDate() + 1); // Sunday -> Monday
+  if (day === 6) d.setDate(d.getDate() + 2); // Saturday -> Monday
+  return d;
+}
+
+// Helper: Format recommended date (business days only)
+function formatRecommendedDate(dateStr) {
+  if (!dateStr) return '-';
+  const date = getNextBusinessDay(new Date(dateStr));
+  return date.toISOString().split('T')[0];
+}
+
 // Render priority queue (top 10)
 const queueEl = document.getElementById('priority-queue');
 queueEl.innerHTML = data.optimized_queue.slice(0, 10).map((p, i) => `
@@ -824,7 +848,7 @@ queueEl.innerHTML = data.optimized_queue.slice(0, 10).map((p, i) => `
         <a href="${p.url}" target="_blank">${p.name.split('|')[0].trim()}</a>
         ${p.is_pe ? '<span class="pe-badge">PE</span>' : ''}
       </div>
-      <div class="priority-meta">${p.location} | ${p.days_to_install}d to install | $${(p.amount/1000).toFixed(0)}k</div>
+      <div class="priority-meta">${p.location} | ${formatDaysToInstall(p.days_to_install)} | $${(p.amount/1000).toFixed(0)}k</div>
     </div>
     <div class="priority-score">
       <div class="priority-score-value">${p.score.toFixed(0)}</div>
@@ -866,10 +890,10 @@ tableEl.innerHTML = data.optimized_queue.map((p, i) => {
       </td>
       <td>${p.location}</td>
       <td>${p.stage}</td>
-      <td><span class="days-badge ${daysClass}">${p.days_to_install}d</span></td>
+      <td><span class="days-badge ${daysClass}">${formatDaysToInstall(p.days_to_install)}</span></td>
       <td>$${(p.amount/1000).toFixed(0)}k</td>
       <td><strong>${p.score.toFixed(0)}</strong></td>
-      <td>${p.recommended_date || '-'}</td>
+      <td>${formatRecommendedDate(p.recommended_date)}</td>
     </tr>
   `;
 }).join('');

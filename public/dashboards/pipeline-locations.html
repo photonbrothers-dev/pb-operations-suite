@@ -42,6 +42,7 @@ function transformProject(p) {
         amount: p.amount || 0,
         url: p.url,
         close_date: p.closeDate,
+        pto_granted: p.ptoGrantedDate,
         forecast_install: forecastInstall,
         forecast_inspection: forecastInspection,
         forecast_pto: forecastPto,
@@ -126,8 +127,8 @@ function LocationDashboard() {
             if (p.days_to_inspection !== null) s.avgDaysToInspection.push(p.days_to_inspection);
             if (p.days_to_pto !== null) s.avgDaysToPTO.push(p.days_to_pto);
 
-            // Check if overdue
-            if (p.forecast_pto && new Date(p.forecast_pto) < today) s.overdue++;
+            // Check if overdue - only if PTO not granted
+            if (!p.pto_granted && p.forecast_pto && new Date(p.forecast_pto) < today) s.overdue++;
 
             // Check PTO timing
             if (p.forecast_pto) {
@@ -175,13 +176,16 @@ function LocationDashboard() {
 
     // Chart
     useEffect(() => {
-        if (!chartRef.current || locationStats.length === 0) return;
+        if (locationStats.length === 0) return;
 
-        if (chartInstance.current) {
-            chartInstance.current.destroy();
-        }
+        const timer = setTimeout(() => {
+            if (!chartRef.current) return;
 
-        const ctx = chartRef.current.getContext('2d');
+            if (chartInstance.current) {
+                chartInstance.current.destroy();
+            }
+
+            const ctx = chartRef.current.getContext('2d');
         const labels = locationStats.map(l => l.name);
 
         let data, label;
@@ -228,7 +232,10 @@ function LocationDashboard() {
             }
         });
 
+        }, 100);
+
         return () => {
+            clearTimeout(timer);
             if (chartInstance.current) chartInstance.current.destroy();
         };
     }, [locationStats, metric]);

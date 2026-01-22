@@ -352,30 +352,28 @@ const today = new Date();
 const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
+// Helper: Format days display
+function formatDays(days, completedDate) {
+  if (completedDate) return 'Done';
+  if (days === null || days === undefined) return 'N/A';
+  if (days === 0) return 'today';
+  if (days < 0) return `${Math.abs(days)}d over`;
+  return `in ${days}d`;
+}
+
 // Transform API data to expected format
 function transformProject(p) {
-  const now = new Date();
-  const closeDate = p.closeDate ? new Date(p.closeDate) : null;
-  const forecastInstall = p.installScheduleDate || (closeDate ? new Date(closeDate.getTime() + 60*24*60*60*1000).toISOString().split('T')[0] : null);
-  const forecastInspection = p.inspectionsScheduleDate || p.inspectionsCompletionDate || (closeDate ? new Date(closeDate.getTime() + 97*24*60*60*1000).toISOString().split('T')[0] : null);
-  const forecastPto = p.ptoCompletionDate || (closeDate ? new Date(closeDate.getTime() + 107*24*60*60*1000).toISOString().split('T')[0] : null);
-
-  const daysToInstall = forecastInstall ? Math.ceil((new Date(forecastInstall) - now) / (1000*60*60*24)) : 999;
-  const daysToInspection = forecastInspection ? Math.ceil((new Date(forecastInspection) - now) / (1000*60*60*24)) : 999;
-  const daysToPto = forecastPto ? Math.ceil((new Date(forecastPto) - now) / (1000*60*60*24)) : 999;
-  const daysSinceClose = closeDate ? Math.ceil((now - closeDate) / (1000*60*60*24)) : 0;
+  // Use API's pre-calculated values (which now include default forecast logic)
+  const daysToInstall = p.daysToInstall;
+  const daysToInspection = p.daysToInspection;
+  const daysToPto = p.daysToPto;
+  const daysSinceClose = p.daysSinceClose || 0;
 
   const isRtb = p.stage === 'Ready To Build' || p.stage === 'RTB - Blocked';
   const isSchedulable = isRtb || p.stage === 'Construction';
   const isPE = p.isParticipateEnergy || false;
 
-  let priorityScore = 0;
-  if (isPE) priorityScore += 30;
-  if (isRtb) priorityScore += 20;
-  if (daysToInstall < 0) priorityScore += Math.min(50, Math.abs(daysToInstall));
-  if (daysToInspection < 0) priorityScore += Math.min(30, Math.abs(daysToInspection) * 0.5);
-  if (daysToPto < 0) priorityScore += Math.min(30, Math.abs(daysToPto) * 0.3);
-  priorityScore += Math.min(20, daysSinceClose / 30);
+  let priorityScore = p.priorityScore || 0;
 
   return {
     id: p.id,
@@ -387,9 +385,9 @@ function transformProject(p) {
     amount: p.amount || 0,
     url: p.url || `https://app.hubspot.com/contacts/21710069/record/0-3/${p.id}`,
     close_date: p.closeDate,
-    forecast_install: forecastInstall,
-    forecast_inspection: forecastInspection,
-    forecast_pto: forecastPto,
+    forecast_install: p.forecastedInstallDate || p.constructionScheduleDate,
+    forecast_inspection: p.forecastedInspectionDate || p.inspectionScheduleDate,
+    forecast_pto: p.forecastedPtoDate,
     days_to_install: daysToInstall,
     days_to_inspection: daysToInspection,
     days_to_pto: daysToPto,
@@ -399,7 +397,11 @@ function transformProject(p) {
     is_schedulable: isSchedulable,
     priority_score: priorityScore,
     estimated_install_days: p.daysForInstallers || 2,
-    default_crew: CREWS_CONFIG[p.pbLocation]?.crews[0]?.name || 'Unassigned'
+    default_crew: CREWS_CONFIG[p.pbLocation]?.crews[0]?.name || 'Unassigned',
+    // Completion dates for filtering
+    construction_complete: p.constructionCompleteDate,
+    inspection_pass: p.inspectionPassDate,
+    pto_granted: p.ptoGrantedDate
   };
 }
 
@@ -497,9 +499,9 @@ function switchView(view) {
 }
 
 function renderPipelineView() {
-  const overdueInstall = projects.filter(p => p.days_to_install < 0).length;
-  const overdueInspection = projects.filter(p => p.days_to_inspection < 0).length;
-  const overduePto = projects.filter(p => p.days_to_pto < 0).length;
+  const overdueInstall = projects.filter(p => p.days_to_install !== null && p.days_to_install < 0 && !p.construction_complete).length;
+  const overdueInspection = projects.filter(p => p.days_to_inspection !== null && p.days_to_inspection < 0 && !p.inspection_pass).length;
+  const overduePto = projects.filter(p => p.days_to_pto !== null && p.days_to_pto < 0 && !p.pto_granted).length;
   const rtbCount = projects.filter(p => p.is_rtb).length;
   const peCount = projects.filter(p => p.is_participate_energy).length;
 
@@ -567,7 +569,7 @@ function renderPipelineTable() {
   if (state.filters.location !== 'all') filtered = filtered.filter(p => p.pb_location === state.filters.location);
   if (state.filters.pe === 'pe') filtered = filtered.filter(p => p.is_participate_energy);
   else if (state.filters.pe === 'non-pe') filtered = filtered.filter(p => !p.is_participate_energy);
-  if (state.filters.status === 'overdue') filtered = filtered.filter(p => p.days_to_install < 0 || p.days_to_pto < 0);
+  if (state.filters.status === 'overdue') filtered = filtered.filter(p => (p.days_to_install !== null && p.days_to_install < 0 && !p.construction_complete) || (p.days_to_pto !== null && p.days_to_pto < 0 && !p.pto_granted));
   else if (state.filters.status === 'rtb') filtered = filtered.filter(p => p.is_rtb);
   if (state.filters.search) {
     const s = state.filters.search.toLowerCase();
@@ -577,7 +579,7 @@ function renderPipelineTable() {
 
   document.getElementById('pipelineTable').innerHTML = filtered.slice(0, 100).map((p, i) => {
     const peClass = p.is_participate_energy ? 'pe-row' : '';
-    const overdueClass = p.days_to_install < 0 ? 'overdue' : '';
+    const overdueClass = (p.days_to_install !== null && p.days_to_install < 0 && !p.construction_complete) ? 'overdue' : '';
     const priorityPct = Math.min(100, (p.priority_score / 150) * 100);
     const priorityColor = p.priority_score > 100 ? 'var(--danger)' : p.priority_score > 50 ? 'var(--warning)' : 'var(--rtb)';
     return `
@@ -596,9 +598,9 @@ function renderPipelineTable() {
           <div style="font-size: 0.65rem; color: var(--text-dim);">${p.ahj || '-'}</div>
         </div>
         <div style="font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent);">$${((p.amount || 0)/1000).toFixed(0)}k</div>
-        <div class="days-indicator ${p.days_to_install < 0 ? 'overdue' : p.days_to_install <= 14 ? 'warning' : 'ok'}">${p.days_to_install}d</div>
-        <div class="days-indicator ${p.days_to_inspection < 0 ? 'overdue' : p.days_to_inspection <= 14 ? 'warning' : 'ok'}">${p.days_to_inspection}d</div>
-        <div class="days-indicator ${p.days_to_pto < 0 ? 'overdue' : p.days_to_pto <= 30 ? 'warning' : 'ok'}">${p.days_to_pto}d</div>
+        <div class="days-indicator ${p.construction_complete ? 'ok' : p.days_to_install !== null && p.days_to_install < 0 ? 'overdue' : p.days_to_install !== null && p.days_to_install <= 14 ? 'warning' : 'ok'}">${formatDays(p.days_to_install, p.construction_complete)}</div>
+        <div class="days-indicator ${p.inspection_pass ? 'ok' : p.days_to_inspection !== null && p.days_to_inspection < 0 ? 'overdue' : p.days_to_inspection !== null && p.days_to_inspection <= 14 ? 'warning' : 'ok'}">${formatDays(p.days_to_inspection, p.inspection_pass)}</div>
+        <div class="days-indicator ${p.pto_granted ? 'ok' : p.days_to_pto !== null && p.days_to_pto < 0 ? 'overdue' : p.days_to_pto !== null && p.days_to_pto <= 30 ? 'warning' : 'ok'}">${formatDays(p.days_to_pto, p.pto_granted)}</div>
         <div>
           <div class="priority-bar"><div class="priority-fill" style="width: ${priorityPct}%; background: ${priorityColor};"></div></div>
           <div style="font-size: 0.6rem; color: var(--text-dim); margin-top: 2px;">${p.priority_score.toFixed(0)}</div>
@@ -698,7 +700,7 @@ function renderQueue() {
       <div class="queue-item-tags">
         ${p.is_participate_energy ? '<span class="queue-item-tag" style="background: var(--pe-dim); color: var(--pe-green);">PE</span>' : ''}
         ${p.is_rtb ? '<span class="queue-item-tag" style="background: rgba(16,185,129,0.2); color: var(--rtb);">RTB</span>' : ''}
-        <span class="queue-item-tag">Install: ${p.days_to_install}d</span>
+        <span class="queue-item-tag">Install: ${formatDays(p.days_to_install, p.construction_complete)}</span>
         <span class="queue-item-tag">Priority: ${p.priority_score.toFixed(0)}</span>
       </div>
     </div>
@@ -756,10 +758,10 @@ function dropProject(e, date) {
 
 function renderPEView() {
   const peProjects = projects.filter(p => p.is_participate_energy);
-  const overdueInsp = peProjects.filter(p => p.days_to_inspection < 0).length;
-  const overduePto = peProjects.filter(p => p.days_to_pto < 0).length;
-  const soonInsp = peProjects.filter(p => p.days_to_inspection >= 0 && p.days_to_inspection <= 14).length;
-  const soonPto = peProjects.filter(p => p.days_to_pto >= 0 && p.days_to_pto <= 30).length;
+  const overdueInsp = peProjects.filter(p => p.days_to_inspection !== null && p.days_to_inspection < 0 && !p.inspection_pass).length;
+  const overduePto = peProjects.filter(p => p.days_to_pto !== null && p.days_to_pto < 0 && !p.pto_granted).length;
+  const soonInsp = peProjects.filter(p => !p.inspection_pass && p.days_to_inspection !== null && p.days_to_inspection >= 0 && p.days_to_inspection <= 14).length;
+  const soonPto = peProjects.filter(p => !p.pto_granted && p.days_to_pto !== null && p.days_to_pto >= 0 && p.days_to_pto <= 30).length;
   const totalValue = peProjects.reduce((s, p) => s + (p.amount || 0), 0);
 
   document.getElementById('peStats').innerHTML = `
@@ -770,19 +772,21 @@ function renderPEView() {
     <div class="stat-card" style="border-color: var(--warning);"><div class="stat-value">${soonPto}</div><div class="stat-label">PTO in 30d</div></div>
   `;
 
-  const inspProjects = peProjects.filter(p => p.days_to_inspection <= 30).sort((a,b) => a.days_to_inspection - b.days_to_inspection);
+  // Filter out completed inspections and sort by days
+  const inspProjects = peProjects.filter(p => !p.inspection_pass && p.days_to_inspection !== null && p.days_to_inspection <= 30).sort((a,b) => a.days_to_inspection - b.days_to_inspection);
   document.getElementById('peInspectionList').innerHTML = inspProjects.slice(0, 15).map(p => `
     <div class="pe-milestone-item">
-      <div><div style="font-weight: 600; font-size: 0.8rem;">${p.name.split('|')[1]?.trim() || p.name}</div><div style="font-size: 0.65rem; color: var(--text-dim);">${p.pb_location} - ${p.forecast_inspection}</div></div>
-      <div class="days-indicator ${p.days_to_inspection < 0 ? 'overdue' : p.days_to_inspection <= 14 ? 'warning' : 'ok'}">${p.days_to_inspection}d</div>
+      <div><div style="font-weight: 600; font-size: 0.8rem;">${p.name.split('|')[1]?.trim() || p.name}</div><div style="font-size: 0.65rem; color: var(--text-dim);">${p.pb_location} - ${p.forecast_inspection || 'No date'}</div></div>
+      <div class="days-indicator ${p.days_to_inspection < 0 ? 'overdue' : p.days_to_inspection <= 14 ? 'warning' : 'ok'}">${formatDays(p.days_to_inspection)}</div>
     </div>
   `).join('') || '<div style="color: var(--text-dim); font-size: 0.75rem;">No upcoming inspections</div>';
 
-  const ptoProjects = peProjects.filter(p => p.days_to_pto <= 45).sort((a,b) => a.days_to_pto - b.days_to_pto);
+  // Filter out completed PTO and sort by days
+  const ptoProjects = peProjects.filter(p => !p.pto_granted && p.days_to_pto !== null && p.days_to_pto <= 45).sort((a,b) => a.days_to_pto - b.days_to_pto);
   document.getElementById('pePtoList').innerHTML = ptoProjects.slice(0, 15).map(p => `
     <div class="pe-milestone-item">
-      <div><div style="font-weight: 600; font-size: 0.8rem;">${p.name.split('|')[1]?.trim() || p.name}</div><div style="font-size: 0.65rem; color: var(--text-dim);">${p.pb_location} - ${p.forecast_pto}</div></div>
-      <div class="days-indicator ${p.days_to_pto < 0 ? 'overdue' : p.days_to_pto <= 30 ? 'warning' : 'ok'}">${p.days_to_pto}d</div>
+      <div><div style="font-weight: 600; font-size: 0.8rem;">${p.name.split('|')[1]?.trim() || p.name}</div><div style="font-size: 0.65rem; color: var(--text-dim);">${p.pb_location} - ${p.forecast_pto || 'No date'}</div></div>
+      <div class="days-indicator ${p.days_to_pto < 0 ? 'overdue' : p.days_to_pto <= 30 ? 'warning' : 'ok'}">${formatDays(p.days_to_pto)}</div>
     </div>
   `).join('') || '<div style="color: var(--text-dim); font-size: 0.75rem;">No upcoming PTO</div>';
 }
@@ -801,10 +805,11 @@ function exportPEReport(format) {
 
 function calculateAlerts() {
   const alerts = [];
-  projects.filter(p => p.days_to_install < -7).forEach(p => {
+  // Only alert for projects that are significantly overdue AND not yet complete
+  projects.filter(p => p.days_to_install !== null && p.days_to_install < -7 && !p.construction_complete).forEach(p => {
     alerts.push({ type: 'danger', title: 'Install Significantly Overdue', message: `${p.name.split('|')[1]?.trim() || p.name} is ${Math.abs(p.days_to_install)} days past forecast`, project: p });
   });
-  projects.filter(p => p.is_participate_energy && p.days_to_pto < 0).forEach(p => {
+  projects.filter(p => p.is_participate_energy && p.days_to_pto !== null && p.days_to_pto < 0 && !p.pto_granted).forEach(p => {
     alerts.push({ type: 'danger', title: 'PE PTO Overdue', message: `${p.name.split('|')[1]?.trim() || p.name} PE milestone at risk`, project: p });
   });
   Object.entries(capacity_analysis).forEach(([loc, cap]) => {

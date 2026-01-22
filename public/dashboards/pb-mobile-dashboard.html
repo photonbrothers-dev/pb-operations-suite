@@ -373,13 +373,15 @@ function processData() {
     locations: {}
   };
 
-  // Calculate overdue
+  // Calculate overdue - only if PTO not yet granted AND past expected date
   const overdueProjects = projects.filter(p => {
+    // Already completed - not overdue
+    if (p.ptoGrantedDate || p.stage === 'Project Complete' || p.stage === 'Close Out') return false;
     if (!p.closeDate) return false;
     const closeDate = new Date(p.closeDate);
     const daysSinceClose = Math.floor((now - closeDate) / (1000 * 60 * 60 * 24));
     const expectedPtoDays = 139;
-    return daysSinceClose > expectedPtoDays && p.stage !== 'Project Complete' && p.stage !== 'Close Out';
+    return daysSinceClose > expectedPtoDays;
   });
   stats.overdue = overdueProjects.length;
 
@@ -395,7 +397,7 @@ function processData() {
     stats.locations[loc].value += p.amount || 0;
   });
 
-  // Calculate priority projects (most overdue, highest value)
+  // Calculate priority projects (most overdue, highest value) - only if not completed
   const priorityProjects = projects
     .map(p => {
       const closeDate = p.closeDate ? new Date(p.closeDate) : null;
@@ -404,7 +406,7 @@ function processData() {
       const daysOverdue = daysSinceClose - expectedPtoDays;
       return { ...p, daysOverdue, daysSinceClose };
     })
-    .filter(p => p.daysOverdue > 0 && p.stage !== 'Project Complete' && p.stage !== 'Close Out')
+    .filter(p => p.daysOverdue > 0 && !p.ptoGrantedDate && p.stage !== 'Project Complete' && p.stage !== 'Close Out')
     .sort((a, b) => b.daysOverdue - a.daysOverdue)
     .slice(0, 5);
 
@@ -439,6 +441,12 @@ function renderStats() {
   }
 }
 
+function formatOverdue(days) {
+  if (days === 0) return 'due today';
+  if (days === 1) return '1 day overdue';
+  return `${days} days overdue`;
+}
+
 function renderPriority(priorityProjects) {
   document.getElementById('priority-list').innerHTML = priorityProjects.map(p => `
     <a href="${p.url}" target="_blank" class="project-item ${p.isParticipateEnergy ? 'pe' : ''} ${p.daysOverdue > 100 ? 'overdue' : 'urgent'}" style="display: block; text-decoration: none; color: inherit;">
@@ -446,7 +454,7 @@ function renderPriority(priorityProjects) {
         ${(p.name || '').split('|')[1]?.trim() || p.name?.split('|')[0]?.trim() || 'Unknown'}
         ${p.isParticipateEnergy ? '<span class="tag tag-pe">PE</span>' : ''}
       </div>
-      <div class="project-meta">${p.pbLocation || 'Unknown'} | ${p.daysOverdue}d overdue</div>
+      <div class="project-meta">${p.pbLocation || 'Unknown'} | ${formatOverdue(p.daysOverdue)}</div>
       <div class="project-tags">
         <span class="tag tag-value">$${((p.amount || 0)/1000).toFixed(0)}k</span>
         <span class="tag tag-overdue">${p.daysOverdue}d</span>
@@ -493,7 +501,7 @@ function renderLists(overdueProjects) {
         ${(p.name || '').split('|')[1]?.trim() || p.name?.split('|')[0]?.trim() || 'Unknown'}
         ${p.isParticipateEnergy ? '<span class="tag tag-pe">PE</span>' : ''}
       </div>
-      <div class="project-meta">${p.pbLocation || 'Unknown'} | ${p.daysOverdue}d overdue</div>
+      <div class="project-meta">${p.pbLocation || 'Unknown'} | ${formatOverdue(p.daysOverdue)}</div>
       <div class="project-tags">
         <span class="tag tag-value">$${((p.amount || 0)/1000).toFixed(0)}k</span>
         <span class="tag tag-overdue">${p.daysOverdue}d</span>

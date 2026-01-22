@@ -48,6 +48,8 @@ function transformProject(p) {
         url: p.url,
         close_date: p.closeDate,
         construction_complete: p.constructionCompleteDate,
+        inspection_pass: p.inspectionPassDate,
+        pto_granted: p.ptoGrantedDate,
         forecast_install: forecastInstall,
         forecast_inspection: forecastInspection,
         forecast_pto: forecastPto,
@@ -102,8 +104,8 @@ function AtRiskDashboard() {
             const risks = [];
             let riskScore = 0;
 
-            // Check install risk
-            if (p.days_to_install !== null) {
+            // Check install risk - only if construction NOT complete
+            if (!p.construction_complete && p.days_to_install !== null) {
                 if (p.days_to_install < 0) {
                     risks.push({ type: 'Install Overdue', days: Math.abs(p.days_to_install), severity: 'critical' });
                     riskScore += 100 + Math.abs(p.days_to_install);
@@ -113,8 +115,8 @@ function AtRiskDashboard() {
                 }
             }
 
-            // Check inspection risk
-            if (p.days_to_inspection !== null) {
+            // Check inspection risk - only if inspection NOT passed
+            if (!p.inspection_pass && p.days_to_inspection !== null) {
                 if (p.days_to_inspection < 0) {
                     risks.push({ type: 'Inspection Overdue', days: Math.abs(p.days_to_inspection), severity: 'critical' });
                     riskScore += 80 + Math.abs(p.days_to_inspection);
@@ -124,8 +126,8 @@ function AtRiskDashboard() {
                 }
             }
 
-            // Check PTO risk
-            if (p.days_to_pto !== null) {
+            // Check PTO risk - only if PTO NOT granted
+            if (!p.pto_granted && p.days_to_pto !== null) {
                 if (p.days_to_pto < 0) {
                     risks.push({ type: 'PTO Overdue', days: Math.abs(p.days_to_pto), severity: 'critical' });
                     riskScore += 60 + Math.abs(p.days_to_pto);
@@ -210,9 +212,23 @@ function AtRiskDashboard() {
         const colors = risk.severity === 'critical'
             ? 'bg-red-100 text-red-800 border-red-200'
             : 'bg-yellow-100 text-yellow-800 border-yellow-200';
+
+        // Format days display based on risk type
+        let daysDisplay;
+        if (risk.type.includes('Overdue')) {
+            daysDisplay = risk.days === 0 ? 'due today' : `${risk.days}d overdue`;
+        } else if (risk.type.includes('Soon')) {
+            daysDisplay = risk.days === 0 ? 'due today' : `in ${risk.days}d`;
+        } else {
+            daysDisplay = `${risk.days}d`;
+        }
+
+        // Simplify type for display
+        const typeDisplay = risk.type.replace(' Overdue', '').replace(' Soon', '');
+
         return (
             <span className={'text-xs px-2 py-1 rounded-full border ' + colors}>
-                {risk.type}: {risk.days}d
+                {typeDisplay}: {daysDisplay}
             </span>
         );
     };

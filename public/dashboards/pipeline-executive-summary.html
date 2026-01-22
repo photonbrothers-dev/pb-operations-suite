@@ -44,12 +44,12 @@
                 url: p.url,
                 close_date: p.closeDate,
                 permit_submit: p.permitSubmitDate,
-                permit_issued: p.permitCompletionDate,
-                install_scheduled: p.installScheduleDate,
+                permit_issued: p.permitIssueDate,
+                install_scheduled: p.constructionScheduleDate,
                 construction_complete: p.constructionCompleteDate,
                 inspection_scheduled: p.inspectionScheduleDate,
-                inspection_pass: p.inspectionCompletionDate,
-                pto_granted: p.ptoCompletionDate,
+                inspection_pass: p.inspectionPassDate,
+                pto_granted: p.ptoGrantedDate,
                 forecast_install: forecastInstall,
                 forecast_inspection: forecastInspection,
                 forecast_pto: forecastPto,
@@ -97,10 +97,11 @@
                 if (projectData.length === 0) return null;
 
                 const totalValue = projectData.reduce((sum, p) => sum + (p.amount || 0), 0);
-                const overdueInstall = projectData.filter(p => p.days_to_install !== null && p.days_to_install < 0);
-                const overdueInspection = projectData.filter(p => p.days_to_inspection !== null && p.days_to_inspection < 0);
-                const overduePto = projectData.filter(p => p.days_to_pto !== null && p.days_to_pto < 0);
-                const onTrack = projectData.filter(p => p.days_to_pto !== null && p.days_to_pto >= 0 && p.days_to_pto <= 30);
+                // Only overdue if NOT completed AND past forecast date
+                const overdueInstall = projectData.filter(p => !p.construction_complete && p.days_to_install !== null && p.days_to_install < 0);
+                const overdueInspection = projectData.filter(p => !p.inspection_pass && p.days_to_inspection !== null && p.days_to_inspection < 0);
+                const overduePto = projectData.filter(p => !p.pto_granted && p.days_to_pto !== null && p.days_to_pto < 0);
+                const onTrack = projectData.filter(p => !p.pto_granted && p.days_to_pto !== null && p.days_to_pto >= 0 && p.days_to_pto <= 30);
 
                 const byLocation = {};
                 projectData.forEach(p => {
@@ -108,7 +109,8 @@
                     if (!byLocation[loc]) byLocation[loc] = { count: 0, value: 0, overdue: 0 };
                     byLocation[loc].count++;
                     byLocation[loc].value += p.amount || 0;
-                    if (p.days_to_pto !== null && p.days_to_pto < 0) byLocation[loc].overdue++;
+                    // Only count as overdue if PTO not granted
+                    if (!p.pto_granted && p.days_to_pto !== null && p.days_to_pto < 0) byLocation[loc].overdue++;
                 });
 
                 const byStage = {};
@@ -150,11 +152,13 @@
             useEffect(() => {
                 if (!metrics) return;
 
-                // Destroy existing charts
-                chartsRef.current.forEach(chart => chart.destroy());
-                chartsRef.current = [];
+                // Small delay to ensure canvas elements are mounted
+                const timer = setTimeout(() => {
+                    // Destroy existing charts
+                    chartsRef.current.forEach(chart => chart.destroy());
+                    chartsRef.current = [];
 
-                if (stageChartRef.current) {
+                    if (stageChartRef.current) {
                     const chart = new Chart(stageChartRef.current.getContext('2d'), {
                         type: 'bar',
                         data: {
@@ -206,6 +210,9 @@
                     });
                     chartsRef.current.push(chart);
                 }
+                }, 100);
+
+                return () => clearTimeout(timer);
             }, [metrics]);
 
             const formatCurrency = (val) => '$' + (val / 1000000).toFixed(2) + 'M';

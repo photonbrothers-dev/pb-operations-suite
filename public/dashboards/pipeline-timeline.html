@@ -38,6 +38,9 @@ function transformProject(p) {
         amount: p.amount || 0,
         url: p.url,
         close_date: p.closeDate,
+        construction_complete: p.constructionCompleteDate,
+        inspection_pass: p.inspectionPassDate,
+        pto_granted: p.ptoGrantedDate,
         forecast_install: forecastInstall,
         forecast_inspection: forecastInspection,
         forecast_pto: forecastPto,
@@ -166,6 +169,11 @@ function TimelineView() {
     };
 
     const getStatusColor = (project) => {
+        // Check if milestone is already completed - show green
+        const isCompleted = milestone === 'install' ? project.construction_complete :
+                          milestone === 'inspection' ? project.inspection_pass : project.pto_granted;
+        if (isCompleted) return '#10B981';
+
         const forecastDate = milestone === 'install' ? project.forecast_install :
                            milestone === 'inspection' ? project.forecast_inspection : project.forecast_pto;
         if (!forecastDate) return '#6B7280';
@@ -188,6 +196,9 @@ function TimelineView() {
             return date.getMonth() === nextMonthDate.getMonth() && date.getFullYear() === nextMonthDate.getFullYear();
         });
         const overdue = filteredProjects.filter(p => {
+            // Check if milestone is already completed
+            const isCompleted = milestone === 'install' ? p.construction_complete : milestone === 'inspection' ? p.inspection_pass : p.pto_granted;
+            if (isCompleted) return false;
             const date = new Date(milestone === 'install' ? p.forecast_install : milestone === 'inspection' ? p.forecast_inspection : p.forecast_pto);
             return date < today;
         });
