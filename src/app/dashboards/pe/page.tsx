@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import DashboardShell from "@/components/DashboardShell";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { formatCurrency } from "@/lib/format";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,15 +95,6 @@ type FilterStatus = "all" | "overdue" | "soon" | "ontrack";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
 
 function displayName(name: string): string {
   return name.split("|")[0].trim();
@@ -681,19 +675,8 @@ export default function PEDashboardPage() {
   // Loading
   if (loading) {
     return (
-      <DashboardShell
-        title="Participate Energy"
-        subtitle="Project Milestone Tracker"
-        accentColor="green"
-      >
-        <div className="flex items-center justify-center py-32">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4" />
-            <p className="text-zinc-400">
-              Loading Participate Energy data...
-            </p>
-          </div>
-        </div>
+      <DashboardShell title="Participate Energy" subtitle="Project Milestone Tracker" accentColor="green">
+        <LoadingSpinner color="green" message="Loading Participate Energy data..." />
       </DashboardShell>
     );
   }
@@ -701,23 +684,8 @@ export default function PEDashboardPage() {
   // Error
   if (error) {
     return (
-      <DashboardShell
-        title="Participate Energy"
-        subtitle="Project Milestone Tracker"
-        accentColor="green"
-      >
-        <div className="flex items-center justify-center py-32">
-          <div className="text-center">
-            <p className="text-xl text-red-400 mb-2">Error</p>
-            <p className="text-zinc-400">{error}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
+      <DashboardShell title="Participate Energy" subtitle="Project Milestone Tracker" accentColor="green">
+        <ErrorState message={error} onRetry={() => window.location.reload()} color="green" />
       </DashboardShell>
     );
   }
@@ -729,6 +697,7 @@ export default function PEDashboardPage() {
       title="Participate Energy"
       subtitle="Project Milestone Tracker"
       accentColor="green"
+      breadcrumbs={[{ label: "Dashboards", href: "/" }, { label: "PE Dashboard" }]}
       lastUpdated={today.toLocaleDateString()}
       headerRight={
         <div className="flex items-center gap-3">
@@ -770,7 +739,7 @@ export default function PEDashboardPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <StatCard
               label="Total Pipeline Value"
-              value={`$${(stats.totalValue / 1_000_000).toFixed(2)}M`}
+              value={formatCurrency(stats.totalValue)}
               accent="blue"
             />
             <StatCard
@@ -929,7 +898,7 @@ export default function PEDashboardPage() {
                         {p.pb_location}
                       </td>
                       <td className="p-3 text-right font-medium text-zinc-200">
-                        ${((p.amount || 0) / 1000).toFixed(0)}k
+                        {formatCurrency(p.amount || 0)}
                       </td>
                       <td className="p-3 text-center">
                         <div className="text-xs text-zinc-500 mb-1">

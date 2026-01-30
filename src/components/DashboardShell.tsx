@@ -1,7 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ReactNode } from "react";
+import { ReactNode, useCallback } from "react";
+
+interface Breadcrumb {
+  label: string;
+  href?: string;
+}
 
 interface DashboardShellProps {
   title: string;
@@ -10,6 +15,12 @@ interface DashboardShellProps {
   lastUpdated?: string | null;
   headerRight?: ReactNode;
   children: ReactNode;
+  /** Breadcrumb trail (e.g. [{ label: "Operations", href: "/" }, { label: "At-Risk" }]) */
+  breadcrumbs?: Breadcrumb[];
+  /** Use full viewport width instead of max-w-7xl container */
+  fullWidth?: boolean;
+  /** Data to enable CSV export button */
+  exportData?: { data: Record<string, unknown>[]; filename: string };
 }
 
 export default function DashboardShell({
@@ -19,6 +30,9 @@ export default function DashboardShell({
   lastUpdated,
   headerRight,
   children,
+  breadcrumbs,
+  fullWidth = false,
+  exportData,
 }: DashboardShellProps) {
   const colorMap: Record<string, string> = {
     orange: "text-orange-400",
@@ -26,17 +40,56 @@ export default function DashboardShell({
     red: "text-red-400",
     blue: "text-blue-400",
     purple: "text-purple-400",
+    emerald: "text-emerald-400",
+    cyan: "text-cyan-400",
+    yellow: "text-yellow-400",
   };
+
+  const handleExport = useCallback(() => {
+    if (!exportData) return;
+    import("@/lib/export").then(({ exportToCSV }) => {
+      exportToCSV(exportData.data, exportData.filename);
+    });
+  }, [exportData]);
+
+  const containerClass = fullWidth
+    ? "px-4 sm:px-6"
+    : "max-w-7xl mx-auto px-4 sm:px-6";
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
-      <header className="bg-[#12121a] border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+      <header className="bg-[#12121a] border-b border-zinc-800 sticky top-0 z-40">
+        <div className={`${containerClass} py-3 sm:py-4`}>
+          {/* Breadcrumbs */}
+          {breadcrumbs && breadcrumbs.length > 0 && (
+            <nav className="flex items-center gap-1 text-xs text-zinc-500 mb-2">
+              <Link href="/" className="hover:text-zinc-300 transition-colors">
+                Home
+              </Link>
+              {breadcrumbs.map((crumb, i) => (
+                <span key={i} className="flex items-center gap-1">
+                  <span className="text-zinc-700">/</span>
+                  {crumb.href ? (
+                    <Link
+                      href={crumb.href}
+                      className="hover:text-zinc-300 transition-colors"
+                    >
+                      {crumb.label}
+                    </Link>
+                  ) : (
+                    <span className="text-zinc-400">{crumb.label}</span>
+                  )}
+                </span>
+              ))}
+            </nav>
+          )}
+
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 sm:gap-4 min-w-0">
               <Link
                 href="/"
                 className="text-zinc-400 hover:text-white transition-colors shrink-0"
+                title="Back to Home"
               >
                 <svg
                   className="w-5 h-5"
@@ -69,12 +122,33 @@ export default function DashboardShell({
                   Updated {lastUpdated}
                 </span>
               )}
+              {exportData && (
+                <button
+                  onClick={handleExport}
+                  className="text-zinc-400 hover:text-white transition-colors p-1.5 rounded hover:bg-zinc-800"
+                  title="Export to CSV"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                </button>
+              )}
               {headerRight}
             </div>
           </div>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">{children}</main>
+      <main className={`${containerClass} py-6`}>{children}</main>
     </div>
   );
 }

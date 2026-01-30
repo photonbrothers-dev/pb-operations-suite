@@ -209,14 +209,14 @@ async function fetchDealsForPipeline(pipelineKey: string): Promise<Deal[]> {
   const stageIds = Object.keys(stageMap);
 
   if (pipelineId === "default" && stageIds.length > 0) {
-    // Fetch each stage separately to avoid the pipeline filter issue.
-    // Add delays between requests to avoid HubSpot's secondly rate limits.
-    for (let i = 0; i < stageIds.length; i++) {
-      const stageId = stageIds[i];
-      // Add delay between stage requests (not before the first one)
-      if (i > 0) {
-        await sleep(300);
-      }
+    // HubSpot's search API rejects pipeline="default" as a filter value.
+    // Instead, use multiple filterGroups (OR logic) to batch stage queries.
+    // HubSpot allows up to 5 filterGroups per request, so we chunk stages.
+    const BATCH_SIZE = 5;
+    for (let batchStart = 0; batchStart < stageIds.length; batchStart += BATCH_SIZE) {
+      const batch = stageIds.slice(batchStart, batchStart + BATCH_SIZE);
+      if (batchStart > 0) await sleep(150); // small delay between batches
+
       after = undefined;
       do {
         const searchRequest: {
@@ -225,17 +225,15 @@ async function fetchDealsForPipeline(pipelineKey: string): Promise<Deal[]> {
           limit: number;
           after?: string;
         } = {
-          filterGroups: [
-            {
-              filters: [
-                {
-                  propertyName: "dealstage",
-                  operator: FilterOperatorEnum.Eq,
-                  value: stageId,
-                },
-              ],
-            },
-          ],
+          filterGroups: batch.map((stageId) => ({
+            filters: [
+              {
+                propertyName: "dealstage",
+                operator: FilterOperatorEnum.Eq,
+                value: stageId,
+              },
+            ],
+          })),
           properties: DEAL_PROPERTIES,
           limit: 100,
         };
@@ -245,10 +243,7 @@ async function fetchDealsForPipeline(pipelineKey: string): Promise<Deal[]> {
         const response = await searchWithRetry(searchRequest);
         allDeals.push(...response.results.map((deal) => deal.properties));
         after = response.paging?.next?.after;
-        // Small delay between pagination requests
-        if (after) {
-          await sleep(150);
-        }
+        if (after) await sleep(100);
       } while (after);
     }
   } else {
@@ -297,7 +292,7 @@ export async function GET(request: NextRequest) {
     const forceRefresh = searchParams.get("refresh") === "true";
 
     // Pagination parameters
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
     const rawLimit = parseInt(searchParams.get("limit") || "0");
     const limit = rawLimit > 0 ? Math.min(200, rawLimit) : 0; // 0 = no pagination
     const sortBy = searchParams.get("sort") || "amount";

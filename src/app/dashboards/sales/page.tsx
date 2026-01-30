@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo } from "react";
 import DashboardShell from "@/components/DashboardShell";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { formatCurrency } from "@/lib/format";
+import { SALES_STAGES, ACTIVE_SALES_STAGES } from "@/lib/constants";
+import { useProgressiveDeals } from "@/hooks/useProgressiveDeals";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,25 +27,8 @@ interface Deal {
 // Constants
 // ---------------------------------------------------------------------------
 
-const STAGES: string[] = [
-  "Qualified to buy",
-  "Proposal Submitted",
-  "Proposal Accepted",
-  "Finalizing Deal",
-  "Sales Follow Up",
-  "Nurture",
-  "Closed won",
-  "Closed lost",
-];
-
-const ACTIVE_STAGES: string[] = [
-  "Qualified to buy",
-  "Proposal Submitted",
-  "Proposal Accepted",
-  "Finalizing Deal",
-  "Sales Follow Up",
-  "Nurture",
-];
+const STAGES = SALES_STAGES;
+const ACTIVE_STAGES = ACTIVE_SALES_STAGES;
 
 const STAGE_BG: Record<string, string> = {
   "Qualified to buy": "bg-blue-500",
@@ -54,57 +42,26 @@ const STAGE_BG: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export default function SalesPipelinePage() {
   // State ------------------------------------------------------------------
-  const [allDeals, setAllDeals] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    deals: allDeals,
+    loading,
+    loadingMore,
+    progress,
+    error,
+    lastUpdated,
+    refetch: fetchData,
+  } = useProgressiveDeals<Deal>({
+    params: { pipeline: "sales", active: "false" },
+  });
 
   const [filterLocation, setFilterLocation] = useState("all");
   const [filterStage, setFilterStage] = useState("all");
   const [showActiveOnly, setShowActiveOnly] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-
-  // Data fetching ----------------------------------------------------------
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch("/api/deals?pipeline=sales&active=false");
-      if (!response.ok) throw new Error("Failed to fetch");
-      const data = await response.json();
-      setAllDeals(data.deals as Deal[]);
-      setLastUpdated(new Date().toLocaleTimeString());
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "An unknown error occurred";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
 
   // Derived data -----------------------------------------------------------
   const locations = useMemo(
@@ -173,30 +130,18 @@ export default function SalesPipelinePage() {
   // Loading state ----------------------------------------------------------
   if (loading && allDeals.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0a0a0f]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-500 mx-auto mb-4" />
-          <p className="text-zinc-400">Loading Sales Pipeline...</p>
-        </div>
-      </div>
+      <DashboardShell title="Sales Pipeline" subtitle="Active Deals" accentColor="green">
+        <LoadingSpinner color="green" message="Loading Sales Pipeline..." />
+      </DashboardShell>
     );
   }
 
   // Error state ------------------------------------------------------------
   if (error && allDeals.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0a0a0f]">
-        <div className="text-center text-red-500">
-          <p className="text-xl mb-2">Error loading data</p>
-          <p className="text-sm text-zinc-400">{error}</p>
-          <button
-            onClick={fetchData}
-            className="mt-4 px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 text-white"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
+      <DashboardShell title="Sales Pipeline" subtitle="Active Deals" accentColor="green">
+        <ErrorState message={error} onRetry={fetchData} color="green" />
+      </DashboardShell>
     );
   }
 
@@ -204,8 +149,9 @@ export default function SalesPipelinePage() {
   return (
     <DashboardShell
       title="Sales Pipeline"
-      subtitle={`Active Deals${lastUpdated ? ` \u2022 Last updated: ${lastUpdated}` : ""}`}
+      subtitle={`Active Deals${loadingMore && progress ? ` \u2022 Loading ${progress.loaded}${progress.total ? `/${progress.total}` : ""} deals...` : lastUpdated ? ` \u2022 Last updated: ${lastUpdated}` : ""}`}
       accentColor="green"
+      breadcrumbs={[{ label: "Dashboards", href: "/" }, { label: "Sales Pipeline" }]}
       headerRight={
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
@@ -335,9 +281,28 @@ export default function SalesPipelinePage() {
       {/* Deals Table */}
       <div className="bg-[#12121a] rounded-xl border border-zinc-800 overflow-hidden">
         <div className="p-4 border-b border-zinc-800">
-          <h2 className="text-lg font-semibold">
-            Deals ({filteredDeals.length})
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold">
+              Deals ({filteredDeals.length})
+            </h2>
+            {loadingMore && progress && (
+              <span className="text-xs text-zinc-500">
+                Loading {progress.loaded}{progress.total ? ` of ${progress.total}` : ""} deals...
+              </span>
+            )}
+          </div>
+          {loadingMore && (
+            <div className="mt-2 h-1 bg-zinc-800 rounded-full overflow-hidden">
+              {progress?.total ? (
+                <div
+                  className="h-full bg-green-500 rounded-full transition-all duration-300"
+                  style={{ width: `${(progress.loaded / progress.total) * 100}%` }}
+                />
+              ) : (
+                <div className="h-full w-1/3 bg-green-500 rounded-full animate-pulse" />
+              )}
+            </div>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">

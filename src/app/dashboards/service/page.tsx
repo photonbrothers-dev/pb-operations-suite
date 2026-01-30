@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo } from "react";
 import DashboardShell from "@/components/DashboardShell";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { formatCurrency } from "@/lib/format";
+import { SERVICE_STAGES } from "@/lib/constants";
+import { useProgressiveDeals } from "@/hooks/useProgressiveDeals";
 
 // --- Types ---
 
@@ -24,22 +29,6 @@ interface Deal {
   url: string;
   isActive: boolean;
   daysSinceCreate: number;
-}
-
-interface DealsApiResponse {
-  deals: Deal[];
-  count: number;
-  totalCount: number;
-  stats: {
-    totalValue: number;
-    stageCounts: Record<string, number>;
-    locationCounts: Record<string, number>;
-  };
-  pagination: null;
-  pipeline: string;
-  cached: boolean;
-  stale: boolean;
-  lastUpdated: string;
 }
 
 // --- Constants ---
@@ -70,49 +59,23 @@ const PIPELINE_STAGES = STAGES.filter(
   (s) => s !== "Completed" && s !== "Cancelled"
 );
 
-// --- Utilities ---
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
 // --- Component ---
 
 export default function ServicePipelinePage() {
-  const [allDeals, setAllDeals] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const {
+    deals: allDeals,
+    loading,
+    loadingMore,
+    progress,
+    error,
+    lastUpdated,
+    refetch: fetchData,
+  } = useProgressiveDeals<Deal>({
+    params: { pipeline: "service", active: "false" },
+  });
+
   const [filterLocation, setFilterLocation] = useState("all");
   const [filterStage, setFilterStage] = useState("all");
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/deals?pipeline=service&active=false");
-      if (!response.ok) throw new Error("Failed to fetch");
-      const data: DealsApiResponse = await response.json();
-      setAllDeals(data.deals);
-      setLastUpdated(new Date().toLocaleTimeString());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Initial load + auto-refresh every 5 minutes
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
 
   // Unique locations for filter dropdown
   const locations = useMemo(
@@ -159,30 +122,18 @@ export default function ServicePipelinePage() {
   // --- Loading state ---
   if (loading && allDeals.length === 0) {
     return (
-      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4" />
-          <p className="text-zinc-400">Loading Service Pipeline...</p>
-        </div>
-      </div>
+      <DashboardShell title="Service Pipeline" accentColor="blue">
+        <LoadingSpinner color="blue" message="Loading Service Pipeline..." />
+      </DashboardShell>
     );
   }
 
   // --- Error state ---
   if (error && allDeals.length === 0) {
     return (
-      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
-        <div className="text-center text-red-500">
-          <p className="text-xl mb-2">Error loading data</p>
-          <p className="text-sm text-zinc-400">{error}</p>
-          <button
-            onClick={fetchData}
-            className="mt-4 px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 text-white"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
+      <DashboardShell title="Service Pipeline" accentColor="blue">
+        <ErrorState message={error} onRetry={fetchData} color="blue" />
+      </DashboardShell>
     );
   }
 
@@ -227,8 +178,10 @@ export default function ServicePipelinePage() {
   return (
     <DashboardShell
       title="Service Pipeline"
+      subtitle={loadingMore && progress ? `Loading ${progress.loaded}${progress.total ? `/${progress.total}` : ""} deals...` : undefined}
       accentColor="blue"
       lastUpdated={lastUpdated}
+      breadcrumbs={[{ label: "Dashboards", href: "/" }, { label: "Service Pipeline" }]}
       headerRight={headerRight}
     >
       {/* Stats Cards */}
@@ -286,9 +239,33 @@ export default function ServicePipelinePage() {
       {/* Service Jobs Table */}
       <div className="bg-[#12121a] rounded-xl border border-zinc-800 overflow-hidden">
         <div className="p-4 border-b border-zinc-800">
-          <h2 className="text-lg font-semibold">
-            Service Jobs ({filteredDeals.length})
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold">
+              Service Jobs ({filteredDeals.length})
+              {filteredDeals.length !== activeDeals.length && (
+                <span className="text-sm font-normal text-zinc-500 ml-2">
+                  {activeDeals.length} active
+                </span>
+              )}
+            </h2>
+            {loadingMore && progress && (
+              <span className="text-xs text-zinc-500">
+                Loading {progress.loaded}{progress.total ? ` of ${progress.total}` : ""} deals...
+              </span>
+            )}
+          </div>
+          {loadingMore && (
+            <div className="mt-2 h-1 bg-zinc-800 rounded-full overflow-hidden">
+              {progress?.total ? (
+                <div
+                  className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                  style={{ width: `${(progress.loaded / progress.total) * 100}%` }}
+                />
+              ) : (
+                <div className="h-full w-1/3 bg-blue-500 rounded-full animate-pulse" />
+              )}
+            </div>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">

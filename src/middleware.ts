@@ -1,5 +1,15 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { createHash } from "crypto";
+
+const AUTH_SALT = process.env.AUTH_SALT || "pb-ops-default-salt";
+
+/** Generate a SHA-256 token from the password + salt */
+function hashToken(password: string): string {
+  return createHash("sha256")
+    .update(password + AUTH_SALT)
+    .digest("hex");
+}
 
 export function middleware(request: NextRequest) {
   // Skip API routes (they have their own auth)
@@ -24,10 +34,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for auth cookie
+  // Check for auth cookie - compare against hashed token
   const authCookie = request.cookies.get("pb-auth");
+  const expectedToken = hashToken(password);
 
-  if (authCookie?.value === password) {
+  if (authCookie?.value === expectedToken) {
     return NextResponse.next();
   }
 

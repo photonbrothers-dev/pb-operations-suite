@@ -1,69 +1,18 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import DashboardShell from "@/components/DashboardShell";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { LiveIndicator } from "@/components/ui/LiveIndicator";
+import { useProjectData } from "@/hooks/useProjectData";
+import { transformProject } from "@/lib/transforms";
+import { formatMoney, formatCurrency } from "@/lib/format";
+import type { RawProject, TransformedProject, Risk, ProjectWithRisk } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
-/*  Types                                                              */
+/*  Local types                                                        */
 /* ------------------------------------------------------------------ */
-
-interface RawProject {
-  id: string;
-  name: string;
-  pbLocation?: string;
-  ahj?: string;
-  utility?: string;
-  projectType?: string;
-  stage: string;
-  amount?: number;
-  url?: string;
-  closeDate?: string;
-  constructionScheduleDate?: string;
-  constructionCompleteDate?: string;
-  forecastedInstallDate?: string;
-  forecastedInspectionDate?: string;
-  forecastedPtoDate?: string;
-  inspectionPassDate?: string;
-  ptoGrantedDate?: string;
-  daysSinceStageMovement?: number;
-  isBlocked?: boolean;
-}
-
-interface TransformedProject {
-  id: string;
-  name: string;
-  pb_location: string;
-  ahj: string;
-  utility: string;
-  project_type: string;
-  stage: string;
-  amount: number;
-  url?: string;
-  close_date?: string;
-  construction_complete?: string;
-  inspection_pass?: string;
-  pto_granted?: string;
-  forecast_install: string | null;
-  forecast_inspection: string | null;
-  forecast_pto: string | null;
-  days_to_install: number | null;
-  days_to_inspection: number | null;
-  days_to_pto: number | null;
-  days_since_close: number;
-}
-
-interface Risk {
-  type: string;
-  days: number;
-  severity: "critical" | "warning";
-}
-
-interface ProjectWithRisk extends TransformedProject {
-  risks: Risk[];
-  riskScore: number;
-  hasCritical: boolean;
-  hasWarning: boolean;
-}
 
 interface RiskTypeData {
   count: number;
@@ -74,121 +23,34 @@ type SortOption = "severity" | "amount" | "days";
 type RiskTypeFilter = "all" | "install" | "inspection" | "pto" | "stalled" | "blocked";
 
 /* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
-
-function transformProject(p: RawProject): TransformedProject {
-  const now = new Date();
-  const closeDate = p.closeDate ? new Date(p.closeDate) : null;
-  const daysSinceClose = closeDate
-    ? Math.floor((now.getTime() - closeDate.getTime()) / MS_PER_DAY)
-    : 0;
-
-  const forecastInstall =
-    p.forecastedInstallDate ||
-    p.constructionScheduleDate ||
-    (closeDate
-      ? new Date(closeDate.getTime() + 75 * MS_PER_DAY).toISOString().split("T")[0]
-      : null);
-
-  const forecastInspection =
-    p.forecastedInspectionDate ||
-    (closeDate
-      ? new Date(closeDate.getTime() + 114 * MS_PER_DAY).toISOString().split("T")[0]
-      : null);
-
-  const forecastPto =
-    p.forecastedPtoDate ||
-    (closeDate
-      ? new Date(closeDate.getTime() + 139 * MS_PER_DAY).toISOString().split("T")[0]
-      : null);
-
-  const daysToInstall = forecastInstall
-    ? Math.floor((new Date(forecastInstall).getTime() - now.getTime()) / MS_PER_DAY)
-    : null;
-
-  const daysToInspection = forecastInspection
-    ? Math.floor((new Date(forecastInspection).getTime() - now.getTime()) / MS_PER_DAY)
-    : null;
-
-  const daysToPto = forecastPto
-    ? Math.floor((new Date(forecastPto).getTime() - now.getTime()) / MS_PER_DAY)
-    : null;
-
-  return {
-    id: p.id,
-    name: p.name,
-    pb_location: p.pbLocation || "Unknown",
-    ahj: p.ahj || "Unknown",
-    utility: p.utility || "Unknown",
-    project_type: p.projectType || "Unknown",
-    stage: p.stage,
-    amount: p.amount || 0,
-    url: p.url,
-    close_date: p.closeDate,
-    construction_complete: p.constructionCompleteDate,
-    inspection_pass: p.inspectionPassDate,
-    pto_granted: p.ptoGrantedDate,
-    forecast_install: forecastInstall,
-    forecast_inspection: forecastInspection,
-    forecast_pto: forecastPto,
-    days_to_install: daysToInstall,
-    days_to_inspection: daysToInspection,
-    days_to_pto: daysToPto,
-    days_since_close: daysSinceClose,
-  };
-}
-
-/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
 export default function AtRiskPage() {
-  const [projects, setProjects] = useState<TransformedProject[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>("severity");
   const [filterLocation, setFilterLocation] = useState("all");
   const [filterRiskType, setFilterRiskType] = useState<RiskTypeFilter>("all");
 
   /* ---- data fetching ---- */
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await fetch("/api/projects?context=at-risk");
-      if (!response.ok) throw new Error("Failed to fetch data");
-      const data = await response.json();
-      setProjects(data.projects.map(transformProject));
-      setLastUpdated(new Date().toLocaleTimeString());
-      setError(null);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data: projects, loading, error, lastUpdated, refetch } = useProjectData<TransformedProject[]>({
+    params: { context: "at-risk" },
+    transform: (res: unknown) => ((res as { projects: RawProject[] }).projects || []).map(transformProject),
+  });
 
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  const allProjects = projects || [];
 
   /* ---- derived data ---- */
 
   const locations = useMemo(() => {
-    const locs = [...new Set(projects.map((p) => p.pb_location))]
+    const locs = [...new Set(allProjects.map((p) => p.pb_location))]
       .filter((l) => l !== "Unknown")
       .sort();
     return ["all", ...locs];
-  }, [projects]);
+  }, [allProjects]);
 
   const projectsWithRisk: ProjectWithRisk[] = useMemo(() => {
-    return projects
+    return allProjects
       .map((p) => {
         const risks: Risk[] = [];
         let riskScore = 0;
@@ -196,18 +58,10 @@ export default function AtRiskPage() {
         // Install risk - only if construction NOT complete
         if (!p.construction_complete && p.days_to_install !== null) {
           if (p.days_to_install < 0) {
-            risks.push({
-              type: "Install Overdue",
-              days: Math.abs(p.days_to_install),
-              severity: "critical",
-            });
+            risks.push({ type: "Install Overdue", days: Math.abs(p.days_to_install), severity: "critical" });
             riskScore += 100 + Math.abs(p.days_to_install);
           } else if (p.days_to_install <= 7) {
-            risks.push({
-              type: "Install Soon",
-              days: p.days_to_install,
-              severity: "warning",
-            });
+            risks.push({ type: "Install Soon", days: p.days_to_install, severity: "warning" });
             riskScore += 50 - p.days_to_install;
           }
         }
@@ -215,18 +69,10 @@ export default function AtRiskPage() {
         // Inspection risk - only if inspection NOT passed
         if (!p.inspection_pass && p.days_to_inspection !== null) {
           if (p.days_to_inspection < 0) {
-            risks.push({
-              type: "Inspection Overdue",
-              days: Math.abs(p.days_to_inspection),
-              severity: "critical",
-            });
+            risks.push({ type: "Inspection Overdue", days: Math.abs(p.days_to_inspection), severity: "critical" });
             riskScore += 80 + Math.abs(p.days_to_inspection);
           } else if (p.days_to_inspection <= 14) {
-            risks.push({
-              type: "Inspection Soon",
-              days: p.days_to_inspection,
-              severity: "warning",
-            });
+            risks.push({ type: "Inspection Soon", days: p.days_to_inspection, severity: "warning" });
             riskScore += 40 - p.days_to_inspection;
           }
         }
@@ -234,44 +80,28 @@ export default function AtRiskPage() {
         // PTO risk - only if PTO NOT granted
         if (!p.pto_granted && p.days_to_pto !== null) {
           if (p.days_to_pto < 0) {
-            risks.push({
-              type: "PTO Overdue",
-              days: Math.abs(p.days_to_pto),
-              severity: "critical",
-            });
+            risks.push({ type: "PTO Overdue", days: Math.abs(p.days_to_pto), severity: "critical" });
             riskScore += 60 + Math.abs(p.days_to_pto);
           } else if (p.days_to_pto <= 21) {
-            risks.push({
-              type: "PTO Soon",
-              days: p.days_to_pto,
-              severity: "warning",
-            });
+            risks.push({ type: "PTO Soon", days: p.days_to_pto, severity: "warning" });
             riskScore += 30 - p.days_to_pto;
           }
         }
 
         // Stalled projects (long time since close without progress)
         if (p.days_since_close > 60 && !p.construction_complete) {
-          risks.push({
-            type: "Stalled",
-            days: p.days_since_close,
-            severity: "warning",
-          });
+          risks.push({ type: "Stalled", days: p.days_since_close, severity: "warning" });
           riskScore += 25;
         }
 
         // Blocked stage
         if (p.stage === "RTB - Blocked") {
-          risks.push({
-            type: "Blocked",
-            days: p.days_since_close,
-            severity: "critical",
-          });
+          risks.push({ type: "Blocked", days: p.days_since_close, severity: "critical" });
           riskScore += 75;
         }
 
-        // Revenue impact
-        riskScore += (p.amount || 0) / 10000;
+        // Revenue impact (capped so monetary value doesn't dominate risk urgency)
+        riskScore += Math.min((p.amount || 0) / 10000, 50);
 
         return {
           ...p,
@@ -282,7 +112,7 @@ export default function AtRiskPage() {
         };
       })
       .filter((p) => p.risks.length > 0);
-  }, [projects]);
+  }, [allProjects]);
 
   const filteredProjects = useMemo(() => {
     let filtered = [...projectsWithRisk];
@@ -332,11 +162,27 @@ export default function AtRiskPage() {
     return { critical, warnings, totalValue, criticalValue, byRiskType };
   }, [filteredProjects]);
 
+  /* ---- export data ---- */
+
+  const exportData = useMemo(() => {
+    return filteredProjects.map((p) => ({
+      name: p.name.split("|")[0].trim(),
+      location: p.pb_location,
+      stage: p.stage,
+      amount: p.amount,
+      risks: p.risks.map((r) => r.type).join(", "),
+      riskScore: Math.round(p.riskScore),
+      forecastInstall: p.forecast_install || "",
+      forecastInspection: p.forecast_inspection || "",
+      forecastPto: p.forecast_pto || "",
+    }));
+  }, [filteredProjects]);
+
   /* ---- sub-components ---- */
 
   const riskTypes: RiskTypeFilter[] = ["all", "install", "inspection", "pto", "stalled", "blocked"];
 
-  const getRiskBadge = (risk: Risk, index: number) => {
+  const getRiskBadge = useCallback((risk: Risk, index: number) => {
     const colors =
       risk.severity === "critical"
         ? "bg-red-500/20 text-red-400 border-red-500/30"
@@ -358,9 +204,9 @@ export default function AtRiskPage() {
         {typeDisplay}: {daysDisplay}
       </span>
     );
-  };
+  }, []);
 
-  /* ---- filter bar (rendered in headerRight) ---- */
+  /* ---- filter bar ---- */
 
   const filterBar = (
     <div className="flex flex-wrap gap-4 items-center">
@@ -409,37 +255,20 @@ export default function AtRiskPage() {
 
   /* ---- loading state ---- */
 
-  if (loading && projects.length === 0) {
+  if (loading && allProjects.length === 0) {
     return (
       <DashboardShell title="At-Risk Projects" subtitle="Projects requiring immediate attention" accentColor="red">
-        <div className="flex items-center justify-center py-32">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4" />
-            <p className="text-zinc-400">Loading at-risk projects...</p>
-          </div>
-        </div>
+        <LoadingSpinner color="red" message="Loading at-risk projects..." />
       </DashboardShell>
     );
   }
 
   /* ---- error state ---- */
 
-  if (error && projects.length === 0) {
+  if (error && allProjects.length === 0) {
     return (
       <DashboardShell title="At-Risk Projects" subtitle="Projects requiring immediate attention" accentColor="red">
-        <div className="flex items-center justify-center py-32">
-          <div className="text-center bg-[#12121a] rounded-xl p-8 border border-zinc-800">
-            <div className="text-red-500 text-4xl mb-4">!</div>
-            <h2 className="text-xl font-bold text-white mb-2">Failed to Load Data</h2>
-            <p className="text-zinc-400 mb-4">{error}</p>
-            <button
-              onClick={() => fetchData()}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
+        <ErrorState message={error} onRetry={refetch} color="red" />
       </DashboardShell>
     );
   }
@@ -452,12 +281,17 @@ export default function AtRiskPage() {
       subtitle="Projects requiring immediate attention"
       accentColor="red"
       lastUpdated={lastUpdated}
+      breadcrumbs={[{ label: "Dashboards", href: "/" }, { label: "At-Risk" }]}
+      exportData={{ data: exportData, filename: "at-risk-projects" }}
       headerRight={
         <div className="flex items-center gap-3">
-          <div className="inline-flex items-center px-3 py-1 bg-green-900/50 text-green-400 rounded-full text-sm">
-            <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse" />
-            Live
-          </div>
+          <LiveIndicator label="Auto-Refresh" />
+          <button
+            onClick={refetch}
+            className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+          >
+            Refresh
+          </button>
         </div>
       }
     >
@@ -471,7 +305,7 @@ export default function AtRiskPage() {
             <div className="text-red-400 font-bold text-lg">ALERT</div>
             <div className="text-red-200">
               {stats.critical.length} critical project{stats.critical.length !== 1 ? "s" : ""} at
-              risk totaling ${(stats.criticalValue / 1_000_000).toFixed(2)}M in revenue
+              risk totaling {formatCurrency(stats.criticalValue)} in revenue
             </div>
           </div>
         </div>
@@ -479,25 +313,21 @@ export default function AtRiskPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-red-900/20 border border-red-800/60 rounded-lg p-4">
+        <div className="bg-red-900/20 border border-red-800/60 rounded-lg p-4 animate-fadeIn">
           <div className="text-3xl font-bold text-red-400">{stats.critical.length}</div>
           <div className="text-sm text-red-300">Critical</div>
-          <div className="text-xs text-red-400/70">
-            ${(stats.criticalValue / 1000).toFixed(0)}k at risk
-          </div>
+          <div className="text-xs text-red-400/70">{formatMoney(stats.criticalValue)} at risk</div>
         </div>
-        <div className="bg-yellow-900/20 border border-yellow-800/60 rounded-lg p-4">
+        <div className="bg-yellow-900/20 border border-yellow-800/60 rounded-lg p-4 animate-fadeIn">
           <div className="text-3xl font-bold text-yellow-400">{stats.warnings.length}</div>
           <div className="text-sm text-yellow-300">Warnings</div>
         </div>
-        <div className="bg-[#12121a] border border-zinc-800 rounded-lg p-4">
+        <div className="bg-[#12121a] border border-zinc-800 rounded-lg p-4 animate-fadeIn">
           <div className="text-3xl font-bold text-white">{filteredProjects.length}</div>
           <div className="text-sm text-zinc-400">Total At-Risk</div>
         </div>
-        <div className="bg-[#12121a] border border-zinc-800 rounded-lg p-4">
-          <div className="text-3xl font-bold text-purple-400">
-            ${(stats.totalValue / 1_000_000).toFixed(1)}M
-          </div>
+        <div className="bg-[#12121a] border border-zinc-800 rounded-lg p-4 animate-fadeIn">
+          <div className="text-3xl font-bold text-purple-400">{formatCurrency(stats.totalValue)}</div>
           <div className="text-sm text-zinc-400">Total Value</div>
         </div>
       </div>
@@ -519,9 +349,7 @@ export default function AtRiskPage() {
                 />
                 <span className="text-sm text-zinc-300">{type}:</span>
                 <span className="text-sm font-medium text-white">{data.count}</span>
-                <span className="text-xs text-zinc-500">
-                  (${(data.value / 1000).toFixed(0)}k)
-                </span>
+                <span className="text-xs text-zinc-500">({formatMoney(data.value)})</span>
               </div>
             ))}
         </div>
@@ -532,7 +360,7 @@ export default function AtRiskPage() {
         {filteredProjects.map((project, idx) => (
           <div
             key={project.id}
-            className={`rounded-lg border p-4 transition-colors ${
+            className={`rounded-lg border p-4 transition-colors animate-fadeIn ${
               project.hasCritical
                 ? "bg-red-900/15 border-red-800/60 hover:bg-red-900/25"
                 : "bg-yellow-900/15 border-yellow-800/60 hover:bg-yellow-900/25"
@@ -559,9 +387,7 @@ export default function AtRiskPage() {
                 </div>
               </div>
               <div className="text-right flex-shrink-0">
-                <div className="text-xl font-bold text-white">
-                  ${((project.amount || 0) / 1000).toFixed(0)}k
-                </div>
+                <div className="text-xl font-bold text-white">{formatMoney(project.amount)}</div>
                 <div className="text-xs text-zinc-500">
                   Risk Score: {project.riskScore.toFixed(0)}
                 </div>

@@ -210,8 +210,14 @@ function formatDays(days: number | null, completedDate?: string | null): string 
 }
 
 function formatCurrency(value: number, unit: "k" | "M" = "k"): string {
-  if (unit === "M") return `$${(value / 1_000_000).toFixed(2)}M`;
-  return `$${(value / 1000).toFixed(0)}k`;
+  if (unit === "M") {
+    if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+    if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+    return `$${value.toFixed(0)}`;
+  }
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${(value / 1000).toFixed(0)}k`;
+  return `$${value.toFixed(0)}`;
 }
 
 function getDaysClass(

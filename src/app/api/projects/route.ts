@@ -34,9 +34,10 @@ export async function GET(request: NextRequest) {
     const includeStats = searchParams.get("stats") === "true";
     const forceRefresh = searchParams.get("refresh") === "true";
 
-    // Pagination parameters
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
-    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "0")));
+    // Pagination parameters (limit=0 means no pagination - return all results)
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
+    const rawLimit = parseInt(searchParams.get("limit") || "0");
+    const limit = rawLimit > 0 ? Math.min(200, rawLimit) : 0;
     const sortBy = searchParams.get("sort") || "priorityScore";
     const sortOrder = searchParams.get("order") === "asc" ? "asc" : "desc";
 
